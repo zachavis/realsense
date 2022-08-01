@@ -46,7 +46,7 @@ DEPTH_SCALE = 0.001
 
 class intrinsics:
     # init method or constructor
-    def __init__(self, model, height, width, fx, fy, ppx, ppy, coeffs = np.zeros(5)):
+    def __init__(self, model, width, height, fx, fy, ppx, ppy, coeffs = np.zeros(5)):
         self.height = height
         self.width = width
         self.fx = fx
@@ -316,8 +316,8 @@ def full_registration_rgbd(pcds, rgbds, intrinsic, max_correspondence_distance_c
 
 
 if __name__ == '__main__':
-    depth_intrinsic = intrinsics('Brown Conrady', 1280,720, 636.773, 636.773, 636.435, 356.862 )
-    color_intrinsic = intrinsics('Inverse Brown Conrady', 1280,720, 926.46, 926.289, 650.359, 359.765 )
+    depth_intrinsic = intrinsics('Brown Conrady', 1280, 720, 636.773, 636.773, 636.435, 356.862 )
+    color_intrinsic = intrinsics('Inverse Brown Conrady', 1280, 720, 926.46, 926.289, 650.359, 359.765 )
     #breakpoint()
 
 
