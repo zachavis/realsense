@@ -347,6 +347,26 @@ def load_point_clouds(intrinsic, directory, indices = [1], voxel_size=0.0):
         pcds.append(pcd_down)
     return pcds
 
+
+
+
+
+def set_cam(C): 
+        cam = o3d.geometry.LineSet.create_camera_visualization(view_width_px = intrinsic.width,
+                                                                view_height_px = intrinsic.height, 
+                                                                intrinsic = intrinsic.K, 
+                                                                extrinsic = np.eye(4), 
+                                                                scale=0.2)
+        cam.transform(C)
+        return cam
+
+def set_cam_axis(C):
+    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.6, origin=[0, 0, 0])
+    mesh_frame.transform(C)
+    return mesh_frame
+
+
+
 if __name__ == "__main__":
 
 
@@ -355,31 +375,67 @@ if __name__ == "__main__":
     fake_intrinsic = intrinsics('Inverse Brown Conrady', 12, 8, 5, 5, 6, 4 )
     intrinsic = fake_intrinsic
 
-    FILE_DIR = Path(sys.argv[1])
-    FILE_DIR2 = Path(sys.argv[2])
-    EGO_DIR = Path(sys.argv[3])
-    #breakpoint()
-    pcds = load_point_clouds(depth_intrinsic, EGO_DIR, [10], 0.05)
+    FILE_DIR = Path(sys.argv[1]) # MAIN PC
+    FILE_DIR2 = Path(sys.argv[2]) # CEILING (REMOVE FOR VISUALIZATION)
+    # TODO load stage in pieces via folder and keep in list
+
+    ego_idx = 3
+    EGO_DIR = Path(sys.argv[ego_idx]) # EGO FRAMES
+
+    if len(sys.argv) == 4:
+        FRAME_ID = (np.arange(940)[::1]+1).tolist() #[352, 367, 382]
+        #breakpoint()
+        FRAME_ID = FRAME_ID[160:320]
+        breakpoint()
+    else:
+        if len(sys.argv) == 5:
+            FRAME_ID = [int(sys.argv[ego_idx+1])]
+        elif len(sys.argv) == 6:
+            frames = int(sys.argv[ego_idx+2]) - int(sys.argv[ego_idx+1]) + 1
+            FRAME_ID = (np.arange(frames)[::1]+int(sys.argv[ego_idx+1])).tolist() #[352, 367, 382]
+        elif len(sys.argv) == 7:
+            frames = int(sys.argv[ego_idx+2]) - int(sys.argv[ego_idx+1]) + 1
+            skip = int(sys.argv[ego_idx+3])
+            FRAME_ID = (np.arange(frames)[::skip]+int(sys.argv[ego_idx+1])).tolist() #[352, 367, 382]
+        else:
+            print(len(sys.argv))
+            sys.exit(1000)
+
+
+
     #breakpoint()
 
-    print("Load a ply point cloud, print it, and render it")
+
+    #breakpoint()
+    print('Loading Point Clouds')
+    pcds = load_point_clouds(depth_intrinsic, EGO_DIR, FRAME_ID, 0.05)
+    #breakpoint()
+
+
+    # hold camera extrinsics for rajectory
+    I = np.eye(4)
+    extrinsics = np.repeat(I[np.newaxis, :, :], len(pcds), axis=0)
+
+
+
+    print("Loading main stage")
     pcd = o3d.io.read_point_cloud(str(FILE_DIR))
     pcd_ceiling = o3d.io.read_point_cloud(str(FILE_DIR2))
-    # print(pcd)
-    # print(np.asarray(pcd.points))
-    # o3d.visualization.draw_geometries([pcd])
 
 
-
-    print("Downsample the point cloud with a voxel of 0.05")
+    print("Downsample the point cloud with a voxel of 0.05") # TODO Make a constant for config
     downpcd = pcd.voxel_down_sample(voxel_size=0.05)
     downpcd_ceiling = pcd_ceiling.voxel_down_sample(voxel_size=0.05)
-    # o3d.visualization.draw_geometries([cam_init])
-
+    
+    # TODO how does this affect ICP
     print("Recompute the normal of the downsampled point cloud")
     downpcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(
         radius=0.1, max_nn=30))
 
+
+
+
+    # Initial Guess of Trajectory Start Pose
     R = Rotation.from_euler('y',165,degrees=True).as_matrix()
     C = np.eye(4)
     c = np.array([-1.2,1.7,-0.2])
@@ -387,65 +443,71 @@ if __name__ == "__main__":
     C[:3,:3] = R
     C[:3,3] = t
 
-
-    basis_R = Rotation.from_euler('z',180,degrees=True).as_matrix() #np.array([[-1,0,0],[0,-1,0],[0,0,1]])
+    basis_R = Rotation.from_euler('z',180,degrees=True).as_matrix()
     R =  R @ basis_R
     t = -R@c
     C[:3,:3] = R
     C[:3,3] = t
 
 
-    #pcds[0].transform(C)
+    cameras = []
+    cam_axes = [] # camera axis  
+    FRE_pcd = [downpcd + downpcd_ceiling] # combined stage
+    prev_C = C
+    print("Registering trajectory of len")
+    for cam_idx in range(len(pcds)):
 
-    cam_init = o3d.geometry.LineSet.create_camera_visualization(view_width_px = intrinsic.width,
-                                                                view_height_px = intrinsic.height, 
-                                                                intrinsic = intrinsic.K, 
-                                                                extrinsic = np.eye(4), 
-                                                                scale=0.2)
-    cam_init.transform(C)
+        # # For debug
+        # noisy_C = np.copy(C)
+        # noisy_C[:3,3] = noisy_C[:3,3] + 0
+        #cam_init = set_cam(C) # previous guess for camera position
+        
+        
+        print("[{}] Registering Frame".format(cam_idx))
+        
 
-    cam_result = copy.deepcopy(cam_init)
-
-    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.6, origin=[0, 0, 0])
-    mesh_frame.transform(C)
-
-    mesh_frame_result = copy.deepcopy(mesh_frame)
-
-    o3d.visualization.RenderOption.line_width=8.0     
-    FRE_pcd = [downpcd + downpcd_ceiling]
-
-    noisy_C = np.copy(C)
-    noisy_C[:3,3] = noisy_C[:3,3] + .5
-
-    print("Initial alignment")
-    evaluation = o3d.pipelines.registration.evaluate_registration(
-        pcds[0], downpcd, 0.05, noisy_C)
-    print(evaluation)
-    print("Transformation is:")
-    print(C)
+        evaluation = o3d.pipelines.registration.evaluate_registration(
+            pcds[cam_idx], downpcd, 0.05, prev_C)
+        print("\tInitial alignment: {}".format(evaluation))
+        # print("Transformation is:")
+        # print(C)
 
 
-    print("Apply point-to-point ICP")
-    reg_p2p = o3d.pipelines.registration.registration_icp(
-        pcds[0], downpcd, 0.5, noisy_C,
-        o3d.pipelines.registration.TransformationEstimationPointToPoint())
-    reg_p2p.transformation = noisy_C
-    print(reg_p2p)
+        print("\tApplying point-to-point ICP...")
+        reg_p2p = o3d.pipelines.registration.registration_icp(
+            pcds[cam_idx], downpcd, 0.5, prev_C,
+            o3d.pipelines.registration.TransformationEstimationPointToPoint())
+        C = reg_p2p.transformation
 
 
-    print("Transformation is:")
-    print(reg_p2p.transformation)
-    print("Final alignment")
-    evaluation = o3d.pipelines.registration.evaluate_registration(
-        pcds[0], downpcd, 0.5, reg_p2p.transformation)
-    print(evaluation)
-    #draw_registration_result(source, target, reg_p2p.transformation)
+        # print("\tTransformation is:")
+        # print(reg_p2p.transformation)
+        evaluation = o3d.pipelines.registration.evaluate_registration(
+            pcds[cam_idx], downpcd, 0.5, C)
 
-    pcds[0].transform(reg_p2p.transformation)
-    cam_result.transform(reg_p2p.transformation)
-    mesh_frame_result.transform(reg_p2p.transformation)
+        print("\tFinal alignment: {}".format(evaluation))
 
-    o3d.visualization.draw_geometries(FRE_pcd + [cam_init, mesh_frame] + [cam_result, mesh_frame_result] + pcds)
+        #draw_registration_result(source, target, reg_p2p.transformation)
+
+
+        pcds[cam_idx].transform(C)
+        cameras.append(set_cam(C))
+        cam_axes.append(set_cam_axis(C))
+        prev_C = C
+        #breakpoint()
+
+
+
+
+    
+    
+    o3d.visualization.RenderOption.line_width=8.0   
+    #o3d.visualization.draw_geometries(FRE_pcd + [cam_init, mesh_frame] + [cam_result, mesh_frame_result] + pcds)
+    o3d.visualization.draw_geometries(FRE_pcd + cameras + cam_axes + pcds)
+
+
+
+
 
 
     # print("Print a normal vector of the 0th point")
