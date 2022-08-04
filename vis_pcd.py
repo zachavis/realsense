@@ -326,9 +326,14 @@ def depth2pc(depth_image, depth_intrinsic, trunc_depth = 3):
 
 def load_point_clouds(intrinsic, directory, indices = [1], voxel_size=0.0):
     pcds = []
-    for idx in indices:
+
+    print('[0/{}]'.format(len(indices)))
+    for (idx,frame_idx) in enumerate(indices):
         #breakpoint()
-        filename = str(directory / 'depth/frame{:07d}.zarr'.format(idx))
+        print('.',end='')
+        if (idx+1)%10 == 0:
+            print('[{}/{}]'.format((idx+1),len(indices)),end='')
+        filename = str(directory / 'depth/frame{:07d}.zarr'.format(frame_idx))
         dimg = load_depth_image(filename)
 
         dimg, _ = fill_in_multiscale(dimg)
@@ -345,6 +350,8 @@ def load_point_clouds(intrinsic, directory, indices = [1], voxel_size=0.0):
         pcd_down = pcd.voxel_down_sample(voxel_size=voxel_size)
         pcd_down.paint_uniform_color(plt.cm.prism(idx/1000)[:-1])
         pcds.append(pcd_down)
+    
+    print('\n{}/{}'.format(len(indices),len(indices)))
     return pcds
 
 
@@ -454,6 +461,7 @@ if __name__ == "__main__":
     cam_axes = [] # camera axis  
     FRE_pcd = [downpcd + downpcd_ceiling] # combined stage
     prev_C = C
+    labels = []
     print("Registering trajectory of len")
     for cam_idx in range(len(pcds)):
 
@@ -493,6 +501,8 @@ if __name__ == "__main__":
         pcds[cam_idx].transform(C)
         cameras.append(set_cam(C))
         cam_axes.append(set_cam_axis(C))
+        #breakpoint()
+        labels.append(o3d.visualization.gui.Label3D("{},{}".format(cam_idx, FRAME_ID[cam_idx]), C[:3,3]))
         prev_C = C
         #breakpoint()
 
@@ -503,6 +513,8 @@ if __name__ == "__main__":
     
     o3d.visualization.RenderOption.line_width=8.0   
     #o3d.visualization.draw_geometries(FRE_pcd + [cam_init, mesh_frame] + [cam_result, mesh_frame_result] + pcds)
+    breakpoint()
+    o3d.visualization.draw_geometries([downpcd] + cameras + cam_axes)
     o3d.visualization.draw_geometries(FRE_pcd + cameras + cam_axes + pcds)
 
 
