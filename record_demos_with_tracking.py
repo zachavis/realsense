@@ -38,6 +38,7 @@ import os
 from pathlib import * 
 import sys
 import json
+import pandas as pd
 
 
 # Input
@@ -535,6 +536,10 @@ if __name__ == "__main__":
         (VIDEO_DIR / uuid_dir / Path('color')).mkdir(parents=True, exist_ok=True)
         (VIDEO_DIR / uuid_dir / Path('depth')).mkdir(parents=True, exist_ok=True)
 	    
+        #LOG_TRAJ = []
+        LOG_IDX = []
+        LOG_POSE = []
+
 	    # # Configure depth and color streams
         # pipeline = rs.pipeline()
         # config = rs.config()
@@ -609,6 +614,13 @@ if __name__ == "__main__":
                 pose_vel = pose_data.velocity
                 pose_acc = pose_data.acceleration 
                 pose_quat = pose_data.rotation
+
+                str_pos = "{0:.5f} {1:.5g} {2:.5g}".format(pose_xyz.x, pose_xyz.y, pose_xyz.z)
+                str_vel = "{0:.5f} {1:.5g} {2:.5g}".format(pose_vel.x, pose_vel.y, pose_vel.z)
+                str_acc = "{0:.5f} {1:.5g} {2:.5g}".format(pose_acc.x, pose_acc.y, pose_acc.z)
+                str_rot = "{0:.5f} {1:.5g} {2:.5g} {3:.5g}".format(pose_quat.x, pose_quat.y, pose_quat.z, pose_quat.w)
+                LOG_POSE.append(str(i) + ' ' + str_pos + ' ' + str_vel + ' ' + str_acc + ' ' + str_rot)
+                
                 #breakpoint()
                 
                 # Convert images to numpy arrays
@@ -666,5 +678,14 @@ if __name__ == "__main__":
             pipeline_D435i.stop()
             #stop_audio_recording()
             print('Video saved')
-            
+            df = pd.DataFrame(index = [uuid_dir], columns = ["traj"])
+            LOG_TRAJ = " ".join(LOG_POSE)
+            df['traj'] = LOG_TRAJ
+            #print(df.head())
+
+            log_file_path = str(VIDEO_DIR / uuid_dir / Path("trajectory.json"))
+            breakpoint()
+            with open(log_file_path,'w') as outfile:
+                json.dump(json.loads(df.to_json(orient='index')), outfile, ensure_ascii=False, indent=2)
+
     print('Program terminated...')
