@@ -9,6 +9,7 @@
 # https://qiita.com/yumion/items/6eeb820c1f06839d57a7
 
 # RealSense Camera
+from distutils.command.build_scripts import first_line_re
 import pyrealsense2 as rs
 
 # Vision
@@ -100,7 +101,7 @@ def on_click(x, y, button, pressed):
     global QUIT_RECORDING
     global KEY_PRESS_SAFETY
     global KILL_PROG
-
+    print('click')
     if pressed and not KEY_PRESS_SAFETY:
         #print("Click pressed: {0}".format(button))
         #if not KEY_PRESS_SAFETY:
@@ -460,7 +461,7 @@ COLOR_HEIGHT = DEPTH_HEIGHT #1080
 ###############################################################
 if __name__ == "__main__":
 
-
+    SAVE2DISK = True
     #print('cmd entry:', sys.argv)
     VIDEO_DIR = sys.argv[1]
 
@@ -476,25 +477,27 @@ if __name__ == "__main__":
     #     time.sleep(0.5)
 
     # Load config for d435i
-    jsonObj = json.load(open("configs/D435i_high_accuracy.json"))
+    jsonObj = json.load(open("configs/D435i_high_accuracy_4.json"))
     json_string= str(jsonObj).replace("'", '\"')
 
     
-    freq=int(jsonObj['viewer']['stream-fps'])
-    print("W: ", int(jsonObj['viewer']['stream-width']))
-    print("H: ", int(jsonObj['viewer']['stream-height']))
-    print("FPS: ", int(jsonObj['viewer']['stream-fps']))
-
     DEPTH_HEIGHT = int(jsonObj['viewer']['stream-height'])
     DEPTH_WIDTH = int(jsonObj['viewer']['stream-width'])
+
+    freq=int(jsonObj['viewer']['stream-fps'])
+    print("W: ", DEPTH_WIDTH)
+    print("H: ", DEPTH_HEIGHT)
+    print("FPS: ", int(jsonObj['viewer']['stream-fps']))
+
+    #breakpoint()    
 
     # Configure depth/color and tracking streams...
     # ...from Camera 1
     pipeline_D435i = rs.pipeline()
     config_D435i = rs.config()
     config_D435i.enable_device('134222076904') # D435i
-    config_D435i.enable_stream(rs.stream.depth, int(jsonObj['viewer']['stream-width']), int(jsonObj['viewer']['stream-height']), rs.format.z16, int(jsonObj['viewer']['stream-fps']))
-    config_D435i.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, int(jsonObj['viewer']['stream-fps']))
+    config_D435i.enable_stream(rs.stream.depth, DEPTH_WIDTH, DEPTH_HEIGHT, rs.format.z16, int(jsonObj['viewer']['stream-fps']))
+    config_D435i.enable_stream(rs.stream.color, COLOR_WIDTH, COLOR_HEIGHT, rs.format.bgr8, int(jsonObj['viewer']['stream-fps']))
     # ...from Camera 2
     pipeline_T265 = rs.pipeline()
     config_T265 = rs.config()
@@ -503,19 +506,17 @@ if __name__ == "__main__":
 
     # breakpoint()
 
-    # Start streaming from both cameras
-    cfg = pipeline_D435i.start(config_D435i)
-    dev = cfg.get_device()
-    advnc_mode = rs.rs400_advanced_mode(dev)
-    advnc_mode.load_json(json_string)
-
-    pipeline_T265.start(config_T265)
+    
 
     # breakpoint()
-
+    first_time = True
     while not KILL_PROG: # Configure streams, folder paths, and save video
 
         # Standby phase
+        if not first_time:
+            pipeline_T265.stop()
+            pipeline_D435i.stop()
+            first_time = True
         print('Press any key to begin recording [Esc, q, or middle click to Quit]',end='',flush=True)
         while not RECORDING and not KILL_PROG:
             if PRE_RECORD_BEEP:
@@ -527,7 +528,20 @@ if __name__ == "__main__":
         print('')
         if KILL_PROG:
             break
-            
+             
+
+
+        # Start streaming from both cameras
+        cfg = pipeline_D435i.start(config_D435i)
+        dev = cfg.get_device()
+        advnc_mode = rs.rs400_advanced_mode(dev)
+        advnc_mode.load_json(json_string)
+
+        pipeline_T265.start(config_T265)
+        time.sleep(1.0) # wait for streams to init
+
+
+
         # Generate Unique Video ID and corresponding folder
         video_name = uuid.uuid4()
         print('Recording {}'.format(video_name))
@@ -615,11 +629,13 @@ if __name__ == "__main__":
                 pose_acc = pose_data.acceleration 
                 pose_quat = pose_data.rotation
 
-                str_pos = "{0:.5f} {1:.5g} {2:.5g}".format(pose_xyz.x, pose_xyz.y, pose_xyz.z)
+                str_pos = "{0:.6f} {1:.6g} {2:.6g}".format(pose_xyz.x, pose_xyz.y, pose_xyz.z)
                 str_vel = "{0:.5f} {1:.5g} {2:.5g}".format(pose_vel.x, pose_vel.y, pose_vel.z)
                 str_acc = "{0:.5f} {1:.5g} {2:.5g}".format(pose_acc.x, pose_acc.y, pose_acc.z)
                 str_rot = "{0:.5f} {1:.5g} {2:.5g} {3:.5g}".format(pose_quat.x, pose_quat.y, pose_quat.z, pose_quat.w)
-                LOG_POSE.append(str(i) + ' ' + str_pos + ' ' + str_vel + ' ' + str_acc + ' ' + str_rot)
+                str_tcon = "{0:.3g}".format(float(pose_data.tracker_confidence))
+                str_mcon = "{0:.3g}".format(float(pose_data.mapper_confidence))
+                LOG_POSE.append(str(i) + ' ' + str_pos + ' ' + str_vel + ' ' + str_acc + ' ' + str_rot + ' ' + str_tcon + ' ' + str_mcon)
                 
                 #breakpoint()
                 
@@ -642,12 +658,13 @@ if __name__ == "__main__":
                 
                 #breakpoint()
                 out_color.write(color_image)
-                
-                cv2.imwrite( str(VIDEO_DIR / uuid_dir / Path('color/frame{:07d}.jpg'.format(i))), color_image)
+                if SAVE2DISK:
+                    cv2.imwrite( str(VIDEO_DIR / uuid_dir / Path('color/frame{:07d}.jpg'.format(i))), color_image)
                 
                 color_image = cv2.resize(color_image, (DEPTH_WIDTH, DEPTH_HEIGHT)) #, interpolation = cv2.INTER_AREA)
                 
-                zarr.save( str(VIDEO_DIR / uuid_dir / Path('depth/frame{:07d}.zarr'.format(i))), zarr_depth_frame)
+                if SAVE2DISK:
+                    zarr.save( str(VIDEO_DIR / uuid_dir / Path('depth/frame{:07d}.zarr'.format(i))), zarr_depth_frame)
                 #out_depth.write(np.uint8(255 * depth_image))
 
                 # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
@@ -679,13 +696,14 @@ if __name__ == "__main__":
             #stop_audio_recording()
             print('Video saved')
             df = pd.DataFrame(index = [uuid_dir], columns = ["traj"])
-            LOG_TRAJ = " ".join(LOG_POSE)
+            LOG_TRAJ =  str(len(LOG_POSE)) + ' ' + " ".join(LOG_POSE)
             df['traj'] = LOG_TRAJ
             #print(df.head())
 
             log_file_path = str(VIDEO_DIR / uuid_dir / Path("trajectory.json"))
-            breakpoint()
-            with open(log_file_path,'w') as outfile:
-                json.dump(json.loads(df.to_json(orient='index')), outfile, ensure_ascii=False, indent=2)
+            #breakpoint()
+            if SAVE2DISK:
+                with open(log_file_path,'w') as outfile:
+                    json.dump(json.loads(df.to_json(orient='index')), outfile, ensure_ascii=False, indent=2)
 
     print('Program terminated...')

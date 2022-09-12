@@ -159,7 +159,7 @@ depth_intrinsic = intrinsics('Brown Conrady', 1280, 720, 636.773, 636.773, 636.4
 color_intrinsic = intrinsics('Inverse Brown Conrady', 1280, 720, 926.46, 926.289, 650.359, 359.765 )
 #breakpoint()
 
-img = cv2.imread(os.path.join(DATA_DIR, "QR_test_color_3.png"))
+img = cv2.imread(os.path.join(DATA_DIR, "test_Color.png"))
 plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
 

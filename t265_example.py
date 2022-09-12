@@ -33,10 +33,13 @@ try:
             print("Frame #{}".format(pose.frame_number))
             print("Position: {}".format(data.translation))
             print("Velocity: {}".format(data.velocity))
-            print("Acceleration: {}\n".format(data.acceleration))
+            print("Acceleration: {}".format(data.acceleration))
+            print("Track Conf: {:.3g}".format(data.tracker_confidence))
+            print("Map Conf: {:.3g}\n".format(data.mapper_confidence))
         else:
             print('NO POSE!!!!!!!!!!')
             breakpoint()
 
+        # breakpoint()    
 finally:
     pipe.stop()
